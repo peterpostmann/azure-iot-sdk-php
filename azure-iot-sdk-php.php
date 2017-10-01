@@ -73,7 +73,7 @@ class IotHub
   private $request_charge = 0;
   private $policyName;
   
-  public static $api_version = '2016-02-03';
+  public static $api_version = '2016-11-14';
 
    /**
      * __construct
@@ -134,10 +134,11 @@ class IotHub
         return Array(
             'Accept: application/json',
             'Host: '.$this->host,
+            'Content-Type: application/json',
             'Content-Length: '.$contentLength,
             'User-Agent: azure-iot-hub.php.sdk/1.0.0',
-           // 'Cache-Control: no-cache',
-            'Authorization: ' . $token
+            'Cache-Control: no-cache',
+            'Authorization: '. $token
         );
   }
 
@@ -154,7 +155,7 @@ class IotHub
    * @param array  $params  query params
    * @return Result Result Object
    */
-    private function request(string $path, string $method, array $headers=array(), string $body = NULL, array $params = array())
+    private function request(string $path, string $method, array $headers=array(), string $body = '', array $params = array())
     {
         $enpoint = $this->host.$path;
         
@@ -166,24 +167,13 @@ class IotHub
 
         $request = new \Http_Request2('https://'.$enpoint.$queryString);
 
-        var_dump($requestHeaders);
-
         $request->setHeader($requestHeaders);
-
-        if ($method === "GET") {
-            $request->setMethod(\HTTP_Request2::METHOD_GET);
-        } else if ($method === "POST") {
-            $request->setMethod(\HTTP_Request2::METHOD_POST);
-        } else if ($method === "PUT") {
-            $request->setMethod(\HTTP_Request2::METHOD_PUT);
-        } else if ($method === "DELETE") {
-            $request->setMethod(\HTTP_Request2::METHOD_DELETE);
-        }
+        $request->setMethod($method);
         
         if ($body) {
             $request->setBody($body);
         }
-        
+
         $error = false;
         
         try
@@ -203,7 +193,7 @@ class IotHub
                                 $json_error
                             );
                             
-            $this->request_charge += ($http_response->getHeader('x-ms-request-charge') ? $http_response->getHeader('x-ms-request-charge') : 0);
+            $this->request_charge++;
                             
             $response = new Response('success', $result);
         }
@@ -217,6 +207,16 @@ class IotHub
             $result = $this->callErrorHandler($response, $result);
 
         return $result;
+    }
+    
+   /**
+    * getCharge
+    *
+    * @return String Total number of API invokations
+    */
+    public function getCharge()
+    {
+        return $this->request_charge;
     }
 
     /**
@@ -263,16 +263,15 @@ class IotHub
              if (0 === strpos($action, 'query'))           $error = ($http_status_code != 204);
         else if (0 === strpos($action, 'abandon'))         $error = ($http_status_code != 204); 
         else if (0 === strpos($action, 'complete'))        $error = ($http_status_code != 204); 
+        else if (0 === strpos($action, 'put'))             $error = ($http_status_code != 200); 
         else if (0 === strpos($action, 'bulk'))            $error = ($http_status_code != 200); 
         else if (0 === strpos($action, 'invoke'))          $error = ($http_status_code != 200); 
         else if (0 === strpos($action, 'create'))          $error = ($http_status_code != 200); 
         else if (0 === strpos($action, 'receive'))         $error = ($http_status_code != 200 && $http_status_code != 204);
-        else if (0 === strpos($action, 'get'))             $error = ($http_status_code != 204 && $http_status_code != 404);
-        else if (0 === strpos($action, 'put'))             $error = ($http_status_code != 200 && $http_status_code != 403); 
+        else if (0 === strpos($action, 'get'))             $error = ($http_status_code != 200 && $http_status_code != 404);
         else if (0 === strpos($action, 'purge'))           $error = ($http_status_code != 200 && $http_status_code != 404);
         else if (0 === strpos($action, 'delete'))          $error = ($http_status_code != 204 && $http_status_code != 404                                       
                                                                                               && $http_status_code != 412); 
-
 
         else if (0 === strpos($action, 'get'))             $error = ($http_status_code != 200 && $http_status_code != 304                                       
                                                                                               && $http_status_code != 404); 
@@ -327,7 +326,7 @@ class IotHub
      */
     public function getDevice(string $deviceId)
     {    
-        return $this->request('/devices/'.$deviceId, 'GET', $headers);
+        return $this->request('/devices/'.$deviceId, 'GET');
     }
 
     /**
@@ -391,8 +390,10 @@ class IotHub
      * @param string $json   JSON request
      * @return string JSON response
      */
-    public function putDevice(string $deviceId, string $device)
+    public function putDevice(string $deviceId, array $device = array())
     {
+        $device['deviceId'] = $deviceId;
+        $device = json_encode($device);
         return $this->request('/devices/'.$deviceId, 'PUT', array(), $device);
     }
     
@@ -407,7 +408,7 @@ class IotHub
      */
     public function queryDevices(string $query)
     {
-        return $this->request('/devices/query/', 'POST ', array(), $query);
+        return $this->request('/devices/query/', 'POST', array(), $query);
     }
     
     /**
@@ -449,9 +450,7 @@ class IotHub
      */
     public function updateDeviceTwin(string $deviceId, string $data)
     {    
-        $body = '{"methodName":"'.$methodName.'","responseTimeoutInSeconds":'.$responseTimeoutInSeconds.',"connectTimeoutInSeconds":'.$connectTimeoutInSeconds.',"payload":'.$payload.'}';
-
-        return $this->request('/twins/'.$deviceId.'/methods', 'POST', array(), $body);
+        return $this->request('/twins/'.$deviceId, 'PATCH', array(), $data);
     }
 
     /**
